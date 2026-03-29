@@ -1,0 +1,66 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      queue_id:
+        description: 'Queue ID dari bot'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build ${{ github.event.inputs.queue_id }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Extract ZIP project
+        run: |
+          QUEUE_ID="${{ github.event.inputs.queue_id }}"
+          ZIP_PATH="uploads/${QUEUE_ID}/project.zip"
+          mkdir -p project
+          unzip -q "$ZIP_PATH" -d project
+
+      - name: Find pubspec.yaml & set project dir
+        run: |
+          PROJECT_DIR=$(find project -name "pubspec.yaml" -maxdepth 4 | head -1 | xargs dirname)
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "Project ditemukan di: $PROJECT_DIR"
+
+      - name: Flutter pub get
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release
+
+      - name: Siapkan output APK
+        run: |
+          APK=$(find ${{ env.PROJECT_DIR }}/build -name "*.apk" | head -1)
+          mkdir -p apk_output
+          cp "$APK" apk_output/app-release.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.event.inputs.queue_id }}
+          path: apk_output/app-release.apk
+          retention-days: 1
